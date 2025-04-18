@@ -13,13 +13,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Create output folder if not exists
+        run: mkdir -p list
+
       - name: Download URLs from external source
         id: vars
         run: |
-          # دانلود فایل urls.txt از URL آنلاین
           curl -fsSL https://raw.githubusercontent.com/10ium/mihomo_rule/refs/heads/main/urls/urls.txt -o urls.txt
-          
-          # تبدیل محتوای فایل به یک متغیر
           urls=$(cat urls.txt | xargs)
           echo "urls=$urls" >> $GITHUB_OUTPUT
 
@@ -29,8 +29,9 @@ jobs:
           changed=0
 
           for url in ${{ steps.vars.outputs.urls }}; do
-            filename=$(basename "$url")                      # e.g., Telegram.list
-            yaml_file="${filename%.list}.yaml"               # e.g., Telegram.yaml
+            filename=$(basename "$url")                          # e.g., Telegram.list
+            yaml_file="${filename%.list}.yaml"                   # e.g., Telegram.yaml
+            output_path="list/$yaml_file"                        # مسیر خروجی
 
             echo "Downloading $filename from $url..."
             curl -fsSL "$url" | sed '/^#/d;/^$/d' > "$filename"
@@ -45,12 +46,12 @@ jobs:
             cat temp_list.txt >> "new_$yaml_file"
             rm temp_list.txt "$filename"
 
-            if [ -f "$yaml_file" ] && diff -q "$yaml_file" "new_$yaml_file" >/dev/null; then
+            if [ -f "$output_path" ] && diff -q "$output_path" "new_$yaml_file" >/dev/null; then
               echo "No changes in $yaml_file"
               rm "new_$yaml_file"
             else
               echo "Changes detected in $yaml_file"
-              mv "new_$yaml_file" "$yaml_file"
+              mv "new_$yaml_file" "$output_path"
               changed=1
             fi
           done
@@ -68,6 +69,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add *.yaml
+          git add list/*.yaml
           git commit -m "chore: Update ACL YAML files ($(date -u +'%Y-%m-%d'))"
           git push
