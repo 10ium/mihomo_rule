@@ -1,57 +1,76 @@
-name: Update Video Censorship Sites List
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v3
 
-on:
-  schedule:
-    - cron: '0 1 * * *'  # هر روز ساعت 01:00 UTC
-  workflow_dispatch:
+  - name: Download all Ponzi HTML pages with browser UA
+    run: |
+      USER_AGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36"
+      mkdir pages
+      echo "Fetching page 1..."
+      curl -fsSL -A "$USER_AGENT" "https://www.webamooz.com/ponzi/" -o pages/page1.html
 
-jobs:
-  update-video-censorship-sites:
-    runs-on: ubuntu-latest
+      # پیدا کردن تعداد صفحات از pagination (اگر هست)
+      max_page=$(grep -oP 'href="https://www.webamooz.com/ponzi/page/\K[0-9]+' pages/page1.html | sort -n | tail -1)
+      if [ -z "$max_page" ]; then
+        max_page=1
+      fi
+      echo "Found $max_page pages."
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      for i in $(seq 2 $max_page); do
+        echo "Fetching page $i..."
+        curl -fsSL -A "$USER_AGENT" "https://www.webamooz.com/ponzi/page/$i/" -o "pages/page$i.html"
+      done
 
-      - name: Download PersianBlocker.txt
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/MasterKia/PersianBlocker/refs/heads/main/PersianBlocker.txt -o PersianBlocker.txt
+  - name: "Debug: show first 50 lines of page1.html"
+    run: |
+      echo "---- page1.html head ----"
+      head -n 50 pages/page1.html
+      echo "---- end head ----"
 
-      - name: Extract domains between Warning and Mobile
-        run: |
-          sed -n '/^!-------------------------v Warning for video censorship sites v-----------------------!$/,/^! Mobile/ p' PersianBlocker.txt \
-            | grep -oP '\[href\*\="\K([a-zA-Z0-9.-]+\.[a-zA-Z]{2,6})' \
-            > temp_list.txt
+  - name: Extract domains from all pages
+    run: |
+      shopt -s nullglob
+      > all_domains.txt
 
-      - name: Build YAML payload
-        run: |
-          if [ ! -s temp_list.txt ]; then
-            echo "::error::No domains extracted from PersianBlocker.txt"
-            exit 1
-          fi
-          echo "payload:" > new_video-censorship-sites.yaml
-          sed 's/^/  - DOMAIN-SUFFIX,/; s/$/,/' temp_list.txt >> new_video-censorship-sites.yaml
-          rm temp_list.txt PersianBlocker.txt
+      for f in pages/page*.html; do
+        domains=$(sed -n '/<tbody>/,/<\/tbody>/p' "$f" \
+          | sed 's/\[\.\]/./g' \
+          | grep -oP '(?<=<td[^>]*>)[A-Za-z0-9.-]+\.[A-Za-z]{2,6}(?=</td>)' || true)
+        [ -n "$domains" ] && echo "$domains" >> all_domains.txt
+      done
 
-      - name: Compare and update
-        id: compare
-        run: |
-          output_path="video-censorship-sites.yaml"
-          if [ -f "$output_path" ] && diff -q "$output_path" new_video-censorship-sites.yaml >/dev/null; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-            rm new_video-censorship-sites.yaml
-          else
-            mv new_video-censorship-sites.yaml "$output_path"
-            echo "changed=true" >> $GITHUB_OUTPUT
-          fi
+      sort -u all_domains.txt > temp_domains.txt
+      rm -rf pages all_domains.txt
 
-      - name: Commit & Push if changed
-        if: steps.compare.outputs.changed == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add video-censorship-sites.yaml
-          git commit -m "chore: Update video censorship sites list ($(date -u +'%Y-%m-%d'))"
-          git push
+  - name: Build YAML payload
+    run: |
+      echo "payload:" > new_ponzi-sites.yaml
+      if [ -s temp_domains.txt ]; then
+        sed 's/^/  - DOMAIN-SUFFIX,/; s/$/,/' temp_domains.txt >> new_ponzi-sites.yaml
+      else
+        echo "::notice::No domains extracted, skipping update."
+      fi
+      rm temp_domains.txt
+
+  - name: "Compare and update YAML"
+    id: compare
+    run: |
+      target="ponzi-sites.yaml"
+      if [ ! -f "$target" ] || ! diff -q "$target" new_ponzi-sites.yaml >/dev/null; then
+        mv new_ponzi-sites.yaml "$target"
+        echo "changed=true" >> $GITHUB_OUTPUT
+      else
+        rm new_ponzi-sites.yaml
+        echo "changed=false" >> $GITHUB_OUTPUT
+      fi
+
+  - name: "Commit & Push if changed"
+    if: steps.compare.outputs.changed == 'true'
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    run: |
+      git config --local user.name "github-actions[bot]"
+      git config --local user.email "github-actions[bot]@users.noreply.github.com"
+      git add ponzi-sites.yaml
+      git commit -m "chore: Update Ponzi sites list ($(date -u +'%Y-%m-%d'))"
+      git push
