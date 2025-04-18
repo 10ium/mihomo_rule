@@ -13,49 +13,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Fetch .list files from ACL4SSR/Clash
-        id: fetch
+      - name: Define list of files to process
+        id: vars
         run: |
-          curl -s https://api.github.com/repos/ACL4SSR/ACL4SSR/contents/Clash \
-            | jq -r '.[] | select(.name | endswith(".list")) | .name' > file_list.txt
+          echo "files=BanProgramAD.list BanAD.list" >> $GITHUB_OUTPUT
 
-          if [ ! -s file_list.txt ]; then
-            echo "::error::No .list files found in ACL4SSR/Clash"
-            exit 1
-          fi
-
-      - name: Process and convert to YAML
-        id: convert
+      - name: Process all list files
+        id: generate
         run: |
           changed=0
 
-          while read -r filename; do
-            url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/$filename"
-            yaml_file="${filename%.list}.yaml"
+          for name in ${{ steps.vars.outputs.files }}; do
+            url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/$name"
+            yaml_file="${name%.list}.yaml"
 
-            echo "Processing $filename..."
+            echo "Downloading $name..."
+            curl -fsSL "$url" | sed '/^#/d;/^$/d' > "$name"
 
-            curl -fsSL "$url" | sed '/^#/d;/^$/d' > "$filename"
-
-            if [ ! -s "$filename" ]; then
-              echo "::warning::$filename is empty after processing"
+            if [ ! -s "$name" ]; then
+              echo "::error::$name is empty after download and cleanup"
               continue
             fi
 
-            sed 's/^/  - /; s/$/,/' "$filename" > temp_list.txt
+            # تبدیل به YAML با کاما در انتها
+            sed 's/^/  - /; s/$/,/' "$name" > temp_list.txt
             echo "payload:" > "new_$yaml_file"
             cat temp_list.txt >> "new_$yaml_file"
             rm temp_list.txt
 
+            # بررسی تغییرات
             if [ -f "$yaml_file" ] && diff -q "$yaml_file" "new_$yaml_file" >/dev/null; then
               echo "No changes in $yaml_file"
               rm "new_$yaml_file"
             else
-              echo "Updating $yaml_file"
+              echo "Changes detected in $yaml_file"
               mv "new_$yaml_file" "$yaml_file"
               changed=1
             fi
-          done < file_list.txt
+          done
 
           if [ "$changed" -eq 1 ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
@@ -64,7 +59,7 @@ jobs:
           fi
 
       - name: Commit & Push changes
-        if: steps.convert.outputs.changed == 'true'
+        if: steps.generate.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
