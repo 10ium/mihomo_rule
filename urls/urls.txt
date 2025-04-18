@@ -1,0 +1,3 @@
+https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanAD.list
+https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanProgramAD.list
+https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/refs/heads/master/Clash/Ruleset/Telegram.list
