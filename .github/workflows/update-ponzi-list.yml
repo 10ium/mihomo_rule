@@ -2,8 +2,8 @@ name: Update Ponzi Scam Sites List
 
 on:
   schedule:
-    - cron: '0 2 * * *'
-  workflow_dispatch:
+    - cron: '0 2 * * *'       # اجرا روزانه ساعت 02:00 UTC
+  workflow_dispatch:         # امکان تریگر دستی هم هست
 
 jobs:
   fetch-ponzi-list:
@@ -13,38 +13,48 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Download all Ponzi HTML pages
+      - name: Download all Ponzi HTML pages with browser UA
         run: |
+          USER_AGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36"
           mkdir pages
           echo "Fetching page 1..."
-          curl -fsSL "https://www.webamooz.com/ponzi/" -o pages/page1.html
+          curl -fsSL -A "$USER_AGENT" "https://www.webamooz.com/ponzi/" -o pages/page1.html
 
-          # پیدا کردن تعداد صفحات از pagination
+          # پیدا کردن تعداد صفحات از pagination (اگر هست)
           max_page=$(grep -oP 'href="https://www.webamooz.com/ponzi/page/\K[0-9]+' pages/page1.html | sort -n | tail -1)
-          if [ -z "$max_page" ]; then max_page=1; fi
+          if [ -z "$max_page" ]; then
+            max_page=1
+          fi
           echo "Found $max_page pages."
 
           for i in $(seq 2 $max_page); do
             echo "Fetching page $i..."
-            curl -fsSL "https://www.webamooz.com/ponzi/page/$i/" -o "pages/page$i.html"
+            curl -fsSL -A "$USER_AGENT" "https://www.webamooz.com/ponzi/page/$i/" -o "pages/page$i.html"
           done
+
+      - name: Debug: show first 50 lines of page1.html
+        run: |
+          echo "---- page1.html head ----"
+          head -n 50 pages/page1.html
+          echo "---- end head ----"
 
       - name: Extract domains from all pages
         run: |
           shopt -s nullglob
           > all_domains.txt
+
           for f in pages/page*.html; do
-            domains=$(sed -n '/<tbody>/,/<\/tbody>/p' "$f" \
+            sed -n '/<tbody>/,/<\/tbody>/p' "$f" \
               | sed 's/\[\.\]/./g' \
-              | grep -oP '(?<=<td>)[A-Za-z0-9.-]+\.[A-Za-z]{2,6}(?=</td>)' || true)
-            [ -n "$domains" ] && echo "$domains" >> all_domains.txt
+              | grep -oP '(?<=<td[^>]*>)[A-Za-z0-9.-]+\.[A-Za-z]{2,6}(?=</td>)' \
+              >> all_domains.txt || true
           done
+
           sort -u all_domains.txt > temp_domains.txt
           rm -rf pages all_domains.txt
 
       - name: Build YAML payload
         run: |
-          # همیشه یک فایل new_ponzi-sites.yaml می‌سازیم، حتی اگر خالی باشه
           echo "payload:" > new_ponzi-sites.yaml
           if [ -s temp_domains.txt ]; then
             sed 's/^/  - DOMAIN-SUFFIX,/; s/$/,/' temp_domains.txt >> new_ponzi-sites.yaml
@@ -57,18 +67,12 @@ jobs:
         id: compare
         run: |
           target="ponzi-sites.yaml"
-
-          # اگر فقط header بود (هیچ دامنه‌ای نیومده)، new_ponzi-sites.yaml رو حذف و بدون تغییر خروجی بده
-          if [ "$(wc -l < new_ponzi-sites.yaml)" -le 1 ]; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-            rm new_ponzi-sites.yaml
-          # اگر فایل قبلی وجود داره و هیچ تغییری نداشته، صرفاً حذف فایل جدید
-          elif [ -f "$target" ] && diff -q "$target" new_ponzi-sites.yaml >/dev/null; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-            rm new_ponzi-sites.yaml
-          else
+          if [ ! -f "$target" ] || ! diff -q "$target" new_ponzi-sites.yaml >/dev/null; then
             mv new_ponzi-sites.yaml "$target"
             echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            rm new_ponzi-sites.yaml
+            echo "changed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Commit & Push if changed
