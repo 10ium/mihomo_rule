@@ -2,7 +2,7 @@ name: Update Video Censorship Sites List
 
 on:
   schedule:
-    - cron: '0 1 * * *'      # اجرا روزانه ساعت 01:00 UTC
+    - cron: '0 1 * * *'  # هر روز ساعت 01:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
             exit 1
           fi
           echo "payload:" > new_video-censorship-sites.yaml
-          sed 's/^/  - DOMAIN-SUFFIX,/' temp_list.txt >> new_video-censorship-sites.yaml
+          sed 's/^/  - DOMAIN-SUFFIX,/; s/$/,/' temp_list.txt >> new_video-censorship-sites.yaml
           rm temp_list.txt PersianBlocker.txt
 
       - name: Compare and update
