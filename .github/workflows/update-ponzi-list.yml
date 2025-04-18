@@ -32,7 +32,7 @@ jobs:
             curl -fsSL -A "$USER_AGENT" "https://www.webamooz.com/ponzi/page/$i/" -o "pages/page$i.html"
           done
 
-      - name: Debug: show first 50 lines of page1.html
+      - name: "Debug: show first 50 lines of page1.html"
         run: |
           echo "---- page1.html head ----"
           head -n 50 pages/page1.html
@@ -59,7 +59,7 @@ jobs:
           if [ -s temp_domains.txt ]; then
             sed 's/^/  - DOMAIN-SUFFIX,/; s/$/,/' temp_domains.txt >> new_ponzi-sites.yaml
           else
-            echo "::notice::No domains extracted, skipping update." 
+            echo "::notice::No domains extracted, skipping update."
           fi
           rm temp_domains.txt
 
@@ -80,8 +80,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add ponzi-sites.yaml
-          git commit -m "chore: Update Ponzi sites list ($(date -u +'%Y-%m-%d'))"
-          git push
+          git config
