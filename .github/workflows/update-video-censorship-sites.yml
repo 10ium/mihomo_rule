@@ -1,0 +1,57 @@
+name: Update Video Censorship Sites List
+
+on:
+  schedule:
+    - cron: '0 1 * * *'      # اجرا روزانه ساعت 01:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update-video-censorship-sites:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download PersianBlocker.txt
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/MasterKia/PersianBlocker/refs/heads/main/PersianBlocker.txt -o PersianBlocker.txt
+
+      - name: Extract domains between Warning and Mobile
+        run: |
+          sed -n '/^!-------------------------v Warning for video censorship sites v-----------------------!$/,/^! Mobile/ p' PersianBlocker.txt \
+            | grep -oP '\[href\*\="\K[^"]+' \
+            > temp_list.txt
+
+      - name: Build YAML payload
+        run: |
+          if [ ! -s temp_list.txt ]; then
+            echo "::error::No domains extracted from PersianBlocker.txt"
+            exit 1
+          fi
+          echo "payload:" > new_video-censorship-sites.yaml
+          sed 's/^/  - DOMAIN-SUFFIX,/' temp_list.txt >> new_video-censorship-sites.yaml
+          rm temp_list.txt PersianBlocker.txt
+
+      - name: Compare and update
+        id: compare
+        run: |
+          output_path="video-censorship-sites.yaml"
+          if [ -f "$output_path" ] && diff -q "$output_path" new_video-censorship-sites.yaml >/dev/null; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            rm new_video-censorship-sites.yaml
+          else
+            mv new_video-censorship-sites.yaml "$output_path"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit & Push if changed
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add video-censorship-sites.yaml
+          git commit -m "chore: Update video censorship sites list ($(date -u +'%Y-%m-%d'))"
+          git push
