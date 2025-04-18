@@ -13,35 +13,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Define list of files to process
+      - name: Download URLs from external source
         id: vars
         run: |
-          echo "files=BanProgramAD.list BanAD.list" >> $GITHUB_OUTPUT
+          # دانلود فایل urls.txt از URL آنلاین
+          curl -fsSL https://raw.githubusercontent.com/10ium/mihomo_rule/refs/heads/main/urls/urls.txt -o urls.txt
+          
+          # تبدیل محتوای فایل به یک متغیر
+          urls=$(cat urls.txt | xargs)
+          echo "urls=$urls" >> $GITHUB_OUTPUT
 
-      - name: Process all list files
+      - name: Process all list URLs
         id: generate
         run: |
           changed=0
 
-          for name in ${{ steps.vars.outputs.files }}; do
-            url="https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/$name"
-            yaml_file="${name%.list}.yaml"
+          for url in ${{ steps.vars.outputs.urls }}; do
+            filename=$(basename "$url")                      # e.g., Telegram.list
+            yaml_file="${filename%.list}.yaml"               # e.g., Telegram.yaml
 
-            echo "Downloading $name..."
-            curl -fsSL "$url" | sed '/^#/d;/^$/d' > "$name"
+            echo "Downloading $filename from $url..."
+            curl -fsSL "$url" | sed '/^#/d;/^$/d' > "$filename"
 
-            if [ ! -s "$name" ]; then
-              echo "::error::$name is empty after download and cleanup"
+            if [ ! -s "$filename" ]; then
+              echo "::error::$filename is empty after download and cleanup"
               continue
             fi
 
-            # تبدیل به YAML با کاما در انتها
-            sed 's/^/  - /; s/$/,/' "$name" > temp_list.txt
+            sed 's/^/  - /; s/$/,/' "$filename" > temp_list.txt
             echo "payload:" > "new_$yaml_file"
             cat temp_list.txt >> "new_$yaml_file"
-            rm temp_list.txt
+            rm temp_list.txt "$filename"
 
-            # بررسی تغییرات
             if [ -f "$yaml_file" ] && diff -q "$yaml_file" "new_$yaml_file" >/dev/null; then
               echo "No changes in $yaml_file"
               rm "new_$yaml_file"
