@@ -20,7 +20,7 @@ jobs:
       - name: Extract domains between Warning and Mobile
         run: |
           sed -n '/^!-------------------------v Warning for video censorship sites v-----------------------!$/,/^! Mobile/ p' PersianBlocker.txt \
-            | grep -oP '\[href\*\="\K[^"]+' \
+            | grep -oP '\[href\*\="\K([a-zA-Z0-9.-]+\.[a-zA-Z]{2,6})' \
             > temp_list.txt
 
       - name: Build YAML payload
