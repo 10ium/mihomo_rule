@@ -22,6 +22,10 @@ jobs:
           # پیدا کردن تعداد صفحات از pagination
           max_page=$(grep -oP 'href="https://www.webamooz.com/ponzi/page/\K[0-9]+' pages/page1.html | sort -n | tail -1)
 
+          if [ -z "$max_page" ]; then
+            max_page=1
+          fi
+
           echo "Found $max_page pages."
 
           for i in $(seq 2 $max_page); do
@@ -31,7 +35,7 @@ jobs:
 
       - name: Extract domains from all pages
         run: |
-          > all_domains.txt
+          > all_domains.txt || true
 
           for f in pages/page*.html; do
             sed -n '/<tbody>/,/<\/tbody>/p' "$f" \
@@ -41,7 +45,8 @@ jobs:
           done
 
           sort -u all_domains.txt > temp_domains.txt
-          rm -r pages all_domains.txt
+          rm -rf pages
+          rm -f all_domains.txt
 
       - name: Build YAML payload
         run: |
