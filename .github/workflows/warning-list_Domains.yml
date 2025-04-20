@@ -3,7 +3,7 @@ name: Process Webamooz Warning List
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'  # اجرا روزانه
+    - cron: '0 0 * * *'
 
 jobs:
   process_domains:
@@ -18,41 +18,24 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4
+        run: pip install requests
 
       - name: Download and process domain list
         run: |
           import requests
           import re
-          import json
-          from bs4 import BeautifulSoup
 
           url = "https://raw.githubusercontent.com/Webamoozcom/warning-list/master/index.html"
           response = requests.get(url)
-          html = response.text
+          content = response.text
 
-          # جستجوی داده‌ها داخل تگ <script>
-          soup = BeautifulSoup(html, "html.parser")
-          script_tag = soup.find("script", string=re.compile(r"var\s+data\s*="))
-          if not script_tag:
-              raise Exception("هیچ اسکریپتی با 'var data =' پیدا نشد.")
-
-          script_content = script_tag.string
-          json_match = re.search(r"var\s+data\s*=\s*(\[\s*.*?\s*\]);", script_content, re.DOTALL)
-          if not json_match:
-              raise Exception("داده JSON درون اسکریپت پیدا نشد.")
-
-          json_str = json_match.group(1)
-          data = json.loads(json_str)
+          # پیدا کردن تمام URLها با regex
+          urls = re.findall(r'"url"\s*:\s*"([^"]+)"', content)
 
           domains = set()
-          for entry in data:
-              url = entry.get("url", "").strip()
-              if not url:
-                  continue
-
-              # حذف http/https و www
-              clean_url = re.sub(r'^(https?://)?(www\.)?', '', url, flags=re.IGNORECASE)
+          for u in urls:
+              u = u.strip()
+              clean_url = re.sub(r'^(https?://)?(www\.)?', '', u, flags=re.IGNORECASE)
 
               if "t.me/" in clean_url:
                   domain = clean_url.split('/')[0].lower()
