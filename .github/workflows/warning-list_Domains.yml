@@ -1,0 +1,77 @@
+name: Process warning-list Domains
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'  # روزانه اجرا شود
+
+jobs:
+  process_domains:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Download and process domain list
+        run: |
+          import requests
+          import re
+          from bs4 import BeautifulSoup
+
+          # دریافت محتوای HTML
+          url = "https://raw.githubusercontent.com/Webamoozcom/warning-list/master/index.html"
+          response = requests.get(url)
+          html_content = response.text
+
+          # استخراج داده‌های JSON از HTML
+          soup = BeautifulSoup(html_content, 'html.parser')
+          script_content = soup.find('script', string=re.compile(r'var\s+data\s*=')).string
+          json_str = re.search(r'var data\s*=\s*(\[.*?\]);', script_content, re.DOTALL).group(1)
+
+          # تبدیل به لیست پایتون
+          import json
+          data = json.loads(json_str)
+
+          # پردازش دامنه‌ها
+          domains = set()
+          for entry in data:
+              url = entry.get("url", "").strip()
+              if not url:
+                  continue
+
+              # حذف پروتکل و www
+              clean_url = re.sub(r'^(https?://)?(www\.)?', '', url, flags=re.IGNORECASE)
+              
+              # حذف مسیرها و پارامترها (مگر برای تلگرام)
+              if "t.me/" in clean_url:
+                  domain = clean_url.split('/')[0].lower()
+                  path = '/'.join(clean_url.split('/')[1:])
+                  final_domain = f"{domain}/{path}" if path else domain
+              else:
+                  final_domain = clean_url.split('/')[0].split('?')[0].split('#')[0].lower()
+
+              # اعتبارسنجی دامنه
+              if '.' in final_domain or "t.me" in final_domain:
+                  domains.add(final_domain)
+
+          # ذخیره در فایل YAML
+          with open("warning-list.yaml", "w", encoding='utf-8') as f:
+              f.write("payload:\n")
+              for domain in sorted(domains):
+                  f.write(f"  - DOMAIN-SUFFIX,{domain},\n")
+
+        shell: python
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add Ponzi.yaml
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update Webamooz domains" && git push)
