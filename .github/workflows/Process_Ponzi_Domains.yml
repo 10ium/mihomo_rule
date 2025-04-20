@@ -1,0 +1,69 @@
+name: Process Ponzi Domains
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 0 * * *'  # هر روز ساعت ۴ صبح به وقت تهران (۰:۳۰ UTC)
+
+jobs:
+  process_domains:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Download and process domain list
+        run: |
+          import requests
+          import re
+
+          # دریافت لیست دامنه‌ها
+          url = "https://raw.githubusercontent.com/10ium/Ponzi_Domain_List/main/output.txt"
+          response = requests.get(url)
+          raw_data = response.text
+
+          # پردازش دامنه‌ها
+          def process_domains(data):
+              domains = set()
+              lines = data.strip().split("\n")
+              
+              for line in lines:
+                  parts = line.split()
+                  for part in parts:
+                      # حذف پروتکل، مسیرها و پارامترها
+                      clean_part = part.split("://")[-1].split("/")[0].split("?")[0]
+                      clean_part = clean_part.split("#")[0]
+                      
+                      if clean_part and "." in clean_part:
+                          # حذف 'www.' از ابتدا
+                          if clean_part.lower().startswith("www."):
+                              clean_part = clean_part[4:]
+                          # تبدیل به حروف کوچک
+                          clean_part = clean_part.lower()
+                          domains.add(clean_part)
+              
+              return sorted(domains)
+
+          processed_domains = process_domains(raw_data)
+
+          # ذخیره در فایل YAML
+          with open("Ponzi.yaml", "w") as f:
+              f.write("payload:\n")
+              for domain in processed_domains:
+                  f.write(f"  - DOMAIN-SUFFIX,{domain},\n")
+
+        shell: python
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add Ponzi.yaml
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update Ponzi domains list" && git push)
