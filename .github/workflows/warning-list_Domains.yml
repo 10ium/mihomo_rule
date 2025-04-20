@@ -1,4 +1,4 @@
-name: Process warning-list Domains
+name: Process Webamooz Warning List
 on:
   workflow_dispatch:
   schedule:
@@ -24,6 +24,7 @@ jobs:
           import requests
           import re
           from bs4 import BeautifulSoup
+          import json
 
           # دریافت محتوای HTML
           url = "https://raw.githubusercontent.com/Webamoozcom/warning-list/master/index.html"
@@ -35,29 +36,27 @@ jobs:
           script_content = soup.find('script', string=re.compile(r'var\s+data\s*=')).string
           json_str = re.search(r'var data\s*=\s*(\[.*?\]);', script_content, re.DOTALL).group(1)
 
-          # تبدیل به لیست پایتون
-          import json
+          # پردازش داده‌ها
           data = json.loads(json_str)
-
-          # پردازش دامنه‌ها
           domains = set()
+
           for entry in data:
               url = entry.get("url", "").strip()
               if not url:
                   continue
 
-              # حذف پروتکل و www
+              # پردازش URL
               clean_url = re.sub(r'^(https?://)?(www\.)?', '', url, flags=re.IGNORECASE)
               
-              # حذف مسیرها و پارامترها (مگر برای تلگرام)
               if "t.me/" in clean_url:
+                  # پردازش لینک‌های تلگرام
                   domain = clean_url.split('/')[0].lower()
                   path = '/'.join(clean_url.split('/')[1:])
                   final_domain = f"{domain}/{path}" if path else domain
               else:
+                  # پردازش سایر دامنه‌ها
                   final_domain = clean_url.split('/')[0].split('?')[0].split('#')[0].lower()
 
-              # اعتبارسنجی دامنه
               if '.' in final_domain or "t.me" in final_domain:
                   domains.add(final_domain)
 
@@ -73,5 +72,5 @@ jobs:
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
-          git add Ponzi.yaml
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update Webamooz domains" && git push)
+          git add warning-list.yaml
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update warning list domains" && git push)
