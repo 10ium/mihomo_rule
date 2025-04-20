@@ -2,7 +2,7 @@ name: Process Ponzi Domains
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 0 * * *'  # هر روز ساعت ۴ صبح به وقت تهران (۰:۳۰ UTC)
+    - cron: '30 21 * * *'
 
 jobs:
   process_domains:
